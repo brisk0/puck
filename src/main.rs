@@ -22,8 +22,8 @@ const MAX_PLAYERS: usize = 4;
 
 
 struct ControllerState {
-    leftX: i16,
-    leftY: i16
+    left_x: i16,
+    left_y: i16
 }
 
 impl Copy for ControllerState {
@@ -32,14 +32,10 @@ impl Copy for ControllerState {
 impl ControllerState {
     fn new() -> ControllerState {
         let state: ControllerState = ControllerState {
-            leftX: 0,
-            leftY: 0
+            left_x: 0,
+            left_y: 0
         };
         return state;
-    }
-    fn zero(&mut self) {
-        self.leftX = 0;
-        self.leftY = 0;
     }
 }
 
@@ -52,6 +48,7 @@ struct Paddle {
     v: [f32; 2],
     a: [f32; 2],
     radius: f32,
+    friction: f32,
     player: u8
 }
 
@@ -68,6 +65,7 @@ impl Paddle {
             v: [0.0, 0.0],
             a: [0.0, 0.0],
             radius: 32.0,
+            friction: 1.0,
             player: player_number,
         };
         return paddle;
@@ -76,16 +74,22 @@ impl Paddle {
 
 impl Entity for Paddle {
     fn tick(&mut self, dt: u32, controller_states: [ControllerState; MAX_PLAYERS]) {
-        let (mut s, mut v, mut a) = (self.s, self.v, self.a);
         let t = dt as f32;
-        a[0] = controller_states[self.player as usize].leftX as f32 / 32767.0;
-        a[1] = controller_states[self.player as usize].leftY as f32 / 32767.0;
-        v[0] = v[0] + a[0]*t;
-        v[1] = v[1] + a[1]*t;
-        s[0] = s[0] + v[0]*t + 0.5*a[0]*t.powi(2);
-        s[1] = s[1] + v[1]*t + 0.5*a[1]*(t.powi(2));
-        if controller_states[self.player as usize].leftX != 0 {
-            println!("You're all good, boss!");
+        self.a[0] = controller_states[self.player as usize].left_x as f32 / 32767.0;
+        self.a[1] = controller_states[self.player as usize].left_y as f32 / 32767.0;
+        self.v[0] = self.v[0] + self.a[0]*t;
+        self.v[1] = self.v[1] + self.a[1]*t;
+        self.s[0] = self.s[0] + self.v[0]*t + 0.5*self.a[0]*t.powi(2);
+        self.s[1] = self.s[1] + self.v[1]*t + 0.5*self.a[1]*(t.powi(2));
+        println!("[F[Ks: [{},{}]", self.s[0], self.s[1]);
+        for v in self.v.iter_mut() {
+            if *v > self.friction {
+                *v -= self.friction;
+            } else if *v < -self.friction {
+                *v += self.friction;
+            } else {
+                *v = 0.0;
+            }
         }
     }
 }
@@ -151,7 +155,7 @@ fn main() {
 
     let mut t1 = timer::get_ticks();
     'game: loop {
-        controller_states = [ControllerState::new(); MAX_PLAYERS];
+        //controller_states = [ControllerState::new(); MAX_PLAYERS];
         'event: loop {
             let event = event::poll_event();
             match event {
@@ -192,13 +196,14 @@ fn main() {
                                 if idx == open_idx {
                                     controllers.push(*open_controller);
                                     let len = controllers.len();
-                                    let paddle = Paddle::new(len as u8);
+                                    let paddle = Paddle::new(len as u8 - 1);
                                     entities.push(Box::new(paddle));
                                     //Game can start with 2 or more players
-                                    if len >= 2 {
+                                    if len == 2 {
                                         //add puck
                                         let mut puck = Puck::new();
                                         entities.push(Box::new(puck));
+                                        println!("Starting Game");
                                     }
                                     break;
                                 }
@@ -212,8 +217,8 @@ fn main() {
                         let (controller_id, _) = controllers[i];
                         if controller_id == idx {
                             match axis {
-                                controller::ControllerAxis::LeftX => controller_states[i].leftX = value,
-                                controller::ControllerAxis::LeftY => controller_states[i].leftY = value,
+                                controller::ControllerAxis::LeftX => controller_states[i].left_x = value,
+                                controller::ControllerAxis::LeftY => controller_states[i].left_y = value,
                                 _ => ()
                             }
                             break;
@@ -227,9 +232,6 @@ fn main() {
         }
         let t2 = timer::get_ticks();
         for entity in entities.iter_mut() {
-            //Remove world objects from tick, find another place to put controllerstates.
-            //Maybe just scrap the world object for now since the convenience of "passing it
-            //around" ain't working. Entity list, Controller states all separate objects.
             entity.tick((t2 - t1) as u32, controller_states);
         }
         t1 = timer::get_ticks();
